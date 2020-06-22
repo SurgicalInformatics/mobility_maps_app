@@ -27,7 +27,8 @@ if(length(file_to_load) == 0){
 #prepare the data
 
 global_mobility_data = global_mobility_data %>% 
-  mutate(sub_region_1 = stringr::str_to_title(sub_region_1),
+  mutate(date = as_datetime(date),
+         sub_region_1 = stringr::str_to_title(sub_region_1),
          sub_region_1 = gsub(' Council', '', sub_region_1),
          sub_region_1 = gsub('Borough Of ', '', sub_region_1),
          sub_region_1 = gsub(' County Borough', '', sub_region_1),
