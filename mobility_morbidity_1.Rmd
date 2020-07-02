@@ -1,0 +1,274 @@
+---
+
+author: "user"
+date: "28 June 2020"
+params:
+  country1: 'Global'
+  date_1: '2020-03-25'
+  date_2: '2020-04-05'
+  date_3: '2020-04-26'
+
+title: Mobility/Morbidity reports for `r params$country`
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+country_1 = params$country1
+date_1 = params$date_1
+date_2 = params$date_2
+date_3 = params$date_3
+amount_to_average_dates = 7
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r prep data, include = FALSE, echo=FALSE, message=FALSE}
+
+library(rmapshaper)
+check_sys_mapshaper()
+library(lubridate)
+library(tidyverse)
+library(patchwork)
+library(rmapshaper)
+library(smoothr)
+library(geojsonio)
+library(dplyr)
+#Original code and its adjustment as per mobility data
+#Download from google
+
+today_date = lubridate::today()
+download.file('https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv', 
+               destfile = paste0('reports/google/google_', today_date, '_mobility_report.csv'))
+#Read the csv file
+global_mobility_data = read_csv(paste0('reports/google/google_', today_date, '_mobility_report.csv'))
+
+
+#here starts new code
+
+#Download from google
+download.file('https://opendata.ecdc.europa.eu/covid19/casedistribution/csv', 
+              destfile = paste0('reports/google/google_', today_date, '_morbidity_report.csv'))
+
+global_morbidity_data = read.csv(paste0('reports/google/google_', today_date, '_morbidity_report.csv'))
+
+
+ #Drop unnecessary vars
+drop <- c("day","month", "year", "countriesAndTerritories", "continentExp", "countryterritoryCode", "popData2019")
+global_morbidity_data = global_morbidity_data[,!(names(global_morbidity_data) %in% drop)]
+
+drop <- c("sub_region_2","iso_3166_2_code", "census_fips_code")
+global_mobility_data = global_mobility_data[,!(names(global_mobility_data) %in% drop)]
+
+
+ #Rename vars for merge
+names(global_morbidity_data)[names(global_morbidity_data) == "dateRep"] <- "date"
+names(global_morbidity_data)[names(global_morbidity_data) == "geoId"] <- "country_region_code"
+
+ #Fix disrepancies to merge fluently with mobility
+str_replace(global_morbidity_data$country_region_code , "UK", "GB")
+
+ #Ensure date as.date format: still shows 'unknown' on my machine
+global_mobility_data$date = as.Date(global_mobility_data$date, "%d/%m/%Y")
+global_morbidity_data$date = as.Date(global_morbidity_data$date, "%d/%m/%Y")
+
+
+#setup lookup table for dealing with params$country
+
+getcountry <- global_mobility_data$country_region_code
+names(getcountry) <- global_mobility_data$country_region
+lookup = params$country
+
+#enables use of a 'global_flag' variable to later switch between country view and global view based on param provided. creates 'country_code' variable which is identical to countries region code. 
+
+if (lookup != 'Global') {
+  country_code = (getcountry[params$country1])
+  country_code = toString(country_code)
+  global_flag = 0} else {
+    global_flag = 1
+  }
+ 
+ #Drop nas
+na.omit(global_mobility_data)
+na.omit(global_morbidity_data)
+```
+
+```{r merge data, include = FALSE, echo=FALSE, message=FALSE}
+ #Merge data on artificial empty sub region
+global_morbidity_data["sub_region_1"] <- NA
+full <- left_join(global_mobility_data, global_morbidity_data, by=c("date","country_region_code", "sub_region_1"), all = TRUE)
+
+#filter out subregion
+full = full %>%
+  filter(is.na(sub_region_1))
+
+ #separate for national data
+if (global_flag != 1){national_data = full %>%
+  filter(country_region_code == country_code)}
+
+```
+
+```{r dates and lagged avg}
+#Filter for dates; see below
+
+national_data_dates = national_data %>% 
+                                     filter(date == date_1 | date == as.Date(date_1) + amount_to_average_dates | date == as.Date(date_1) - amount_to_average_dates |
+                                              date == date_2 | date == as.Date(date_2) + amount_to_average_dates | date == as.Date(date_2) - amount_to_average_dates |
+                                              date == date_3 | date == as.Date(date_3) + amount_to_average_dates | date == as.Date(date_3) - amount_to_average_dates )
+global_full_dates = full %>% 
+                                     filter(date == date_1 | date == date_2 | date == date_3)
+
+#quick and dirty solution by means of if loop provided but surely can be made more efficient.
+
+if (global_flag == 1){
+national_data_dates = global_full_dates}
+
+  #Calculate a lagged average
+national_data_dates = national_data_dates %>% 
+  mutate(date_diff_1 = ifelse(as.Date(date_1) - date <= amount_to_average_dates & as.Date(date_1) - date >= -amount_to_average_dates, 'Within','Outwith'),
+         date_diff_2 = ifelse(as.Date(date_2) - date <= amount_to_average_dates & as.Date(date_2) - date >= -amount_to_average_dates, 'Within','Outwith'),
+         date_diff_3 = ifelse(as.Date(date_2) - date <= amount_to_average_dates & as.Date(date_2) - date >= -amount_to_average_dates, 'Within','Outwith')) %>% 
+  group_by(country_region_code, date_diff_1) %>% 
+   mutate(residential_percent_change_from_baseline = ifelse(date == date_1, mean(residential_percent_change_from_baseline, na.rm = T),
+                                                           residential_percent_change_from_baseline),
+         retail_and_recreation_percent_change_from_baseline = ifelse(date == date_1, mean(retail_and_recreation_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           retail_and_recreation_percent_change_from_baseline),
+         grocery_and_pharmacy_percent_change_from_baseline = ifelse(date == date_1, mean(grocery_and_pharmacy_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           grocery_and_pharmacy_percent_change_from_baseline),
+         parks_percent_change_from_baseline = ifelse(date == date_1, mean(parks_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           parks_percent_change_from_baseline),
+         transit_stations_percent_change_from_baseline = ifelse(date == date_1, mean(transit_stations_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           transit_stations_percent_change_from_baseline),
+         workplaces_percent_change_from_baseline = ifelse(date == date_1, mean(workplaces_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           workplaces_percent_change_from_baseline),
+#cases and deaths         
+         cases = ifelse(date == date_1, mean(cases, 
+                                                                                          na.rm = T),
+                                                           cases),
+         deaths = ifelse(date == date_1, mean(deaths, 
+                                                                                          na.rm = T),
+                                                           deaths)) %>% 
+  ungroup() %>% 
+    group_by(sub_region_1, date_diff_2) %>% 
+  mutate(residential_percent_change_from_baseline = ifelse(date == date_2, mean(residential_percent_change_from_baseline, na.rm = T),
+                                                           residential_percent_change_from_baseline),
+         retail_and_recreation_percent_change_from_baseline = ifelse(date == date_2, mean(retail_and_recreation_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           retail_and_recreation_percent_change_from_baseline),
+         grocery_and_pharmacy_percent_change_from_baseline = ifelse(date == date_2, mean(grocery_and_pharmacy_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           grocery_and_pharmacy_percent_change_from_baseline),
+         parks_percent_change_from_baseline = ifelse(date == date_2, mean(parks_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           parks_percent_change_from_baseline),
+         transit_stations_percent_change_from_baseline = ifelse(date == date_2, mean(transit_stations_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           transit_stations_percent_change_from_baseline),
+         workplaces_percent_change_from_baseline = ifelse(date == date_2, mean(workplaces_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           workplaces_percent_change_from_baseline),
+         
+    #deaths and cases     
+         cases = ifelse(date == date_2, mean(cases, 
+                                                                                          na.rm = T),
+                                                           cases),
+         deaths = ifelse(date == date_2, mean(deaths, 
+                                                                                          na.rm = T),
+                                                           deaths)) %>% 
+    ungroup() %>% 
+    group_by(sub_region_1, date_diff_3) %>% 
+  mutate(residential_percent_change_from_baseline = ifelse(date == date_3, mean(residential_percent_change_from_baseline, na.rm = T),
+                                                           residential_percent_change_from_baseline),
+         retail_and_recreation_percent_change_from_baseline = ifelse(date == date_3, mean(retail_and_recreation_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           retail_and_recreation_percent_change_from_baseline),
+         grocery_and_pharmacy_percent_change_from_baseline = ifelse(date == date_3, mean(grocery_and_pharmacy_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           grocery_and_pharmacy_percent_change_from_baseline),
+         parks_percent_change_from_baseline = ifelse(date == date_3, mean(parks_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           parks_percent_change_from_baseline),
+         transit_stations_percent_change_from_baseline = ifelse(date == date_3, mean(transit_stations_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           transit_stations_percent_change_from_baseline),
+         workplaces_percent_change_from_baseline = ifelse(date == date_3, mean(workplaces_percent_change_from_baseline, 
+                                                                                          na.rm = T),
+                                                           workplaces_percent_change_from_baseline),
+         
+    #deaths and cases
+         cases = ifelse(date == date_3, mean(cases, 
+                                                                                          na.rm = T),
+                                                           cases),
+         deaths = ifelse(date == date_3, mean(deaths, 
+                                                                                          na.rm = T),
+                                                           deaths)) %>% 
+  ungroup() %>% 
+                                     filter(date == date_1 |
+                                              date == date_2 |
+                                              date == date_3) %>% 
+  select(-date_diff_1, -date_diff_2, -date_diff_3)
+
+```
+
+```{r mapping tool}
+#Read GEOJson world file 
+#we will need a proper graphing function here.
+
+world_map = geojsonio::geojson_read('world_maps/countries.geojson', what = 'sp')
+
+#Linkage CSVs
+iso_code_conv = read_csv('world_maps/iso_code_conversion.csv')
+
+#Add the ISO2 code for lookup
+world_map@data = world_map@data %>% 
+  left_join(iso_code_conv %>% select(iso2, iso3), by = c('ISO_A3' = 'iso3'))
+
+#Now merge/filter in depending on dates and var of interest: 
+#I am not sure why it enforces date as 'unknown' in between markdown fields ? this prevents proper filtering by date in the code below. but maybe only on my machine.
+global_full_dates$date = as.Date(global_full_dates$date, "%d/%m/%Y")
+national_data_dates$date = as.Date(national_data_dates$date, "%d/%m/%Y")
+
+
+#plan to use global_full_dates instead of the =national_data_dates dirty solution upstream. 
+
+if (global_flag == 1) {
+merged_filtered = global_full_dates %>%
+  filter(date == '2020-03-25')} else {
+merged_filtered = national_data_dates }
+
+
+plot
+world_map_fortified = fortify(world_map, region = 'iso2') %>% 
+  left_join(merged_filtered, by = c('id' = 'country_region_code'))
+
+#This is also yet to be fixed, to fill in the ggplot text automatically by our chosen 'country' etc.
+
+world_map_fortified %>%  
+  ggplot(aes(y = lat, x = long, group = group)) + 
+  geom_polygon(aes(fill = (residential_percent_change_from_baseline)), size = 0.25, color = 'black')  +
+  ggtitle("Italy?") 
+  
+```
+
+```{r test for corr plots}
+ #Test
+filter(full, is.na(sub_region_1) & country_region_code == 'IT' )
+d = cor(full$cases, full$workplaces_percent_change_from_baseline, use = 'na.or.complete')
+x = full$cases
+y = full$workplaces_percent_change_from_baseline
+plot(x, y, main = "workplace percent change vs. cases in italy throughout whole duration",
+     xlab = "cases in italy", ylab = "workplace percent change",
+     pch = 19, frame = FALSE)
+```
+
