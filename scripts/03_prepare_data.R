@@ -21,12 +21,12 @@ amount_to_average_dates = 7
 #filter for selected dates only
 
 uk_mobility_data_subnational_dates = uk_mobility_data_subnational %>% 
-  filter(date == date_1 | date == as.Date(date_1) + amount_to_average_dates | date == as.Date(date_1) - amount_to_average_dates |
-           date == date_2 | date == as.Date(date_2) + amount_to_average_dates | date == as.Date(date_2) - amount_to_average_dates |
-           date == date_3 | date == as.Date(date_3) + amount_to_average_dates | date == as.Date(date_3) - amount_to_average_dates )
+  filter(date == as.Date(date_1) | date == as.Date(date_1) + amount_to_average_dates | date == as.Date(date_1) - amount_to_average_dates |
+           date == as.Date(date_2) | date == as.Date(date_2) + amount_to_average_dates | date == as.Date(date_2) - amount_to_average_dates |
+           date == as.Date(date_3) | date == as.Date(date_3) + amount_to_average_dates | date == as.Date(date_3) - amount_to_average_dates )
 
 uk_mobility_data_national_dates = uk_mobility_data_national %>% 
-  filter(date == date_1 | date == date_2 | date == date_3)
+  filter(date == as.Date(date_1) | date == as.Date(date_2) | date == as.Date(date_3))
 
 #Calculate a lagged average
 uk_mobility_data_subnational_dates = uk_mobility_data_subnational_dates %>% 
@@ -90,12 +90,23 @@ uk_mobility_data_subnational_dates = uk_mobility_data_subnational_dates %>%
                                                                                na.rm = T),
                                                           workplaces_percent_change_from_baseline)) %>% 
   ungroup() %>% 
-  filter(date == date_1 |
-           date == date_2 |
-           date == date_3) %>% 
+  filter(date == as.Date(date_1) |
+           date == as.Date(date_2) |
+           date == as.Date(date_3)) %>% 
   select(-date_diff_1, -date_diff_2, -date_diff_3)
 
 
+uk_mobility_data_subnational_dates = uk_mobility_data_subnational_dates %>% 
+  mutate(date_class = ifelse(date == as.Date(date_1), '1', NA),
+         date_class = ifelse(date == as.Date(date_2), '2', date_class),
+         date_class = ifelse(date == as.Date(date_3), '3', date_class)) %>%
+  select(-country_region_code, -country_region, -sub_region_2) %>% 
+  pivot_wider(names_from = date_class, 
+              values_from = all_of(c("date", "retail_and_recreation_percent_change_from_baseline", "grocery_and_pharmacy_percent_change_from_baseline", 
+                                     "parks_percent_change_from_baseline", "transit_stations_percent_change_from_baseline",
+                                     "workplaces_percent_change_from_baseline", "residential_percent_change_from_baseline" 
+              ))) %>% 
+  select(-contains('_NA', ignore.case = FALSE))
 
 
 eng_sco_wal_ni@data %>% 
@@ -122,17 +133,7 @@ if(country == 'UK'){
               workplaces_percent_change_from_baseline = mean(workplaces_percent_change_from_baseline, na.rm = T)) %>% drop_na()
 }
 
-uk_mobility_data_subnational_dates = uk_mobility_data_subnational_dates %>% 
-  mutate(date_class = ifelse(date == date_1, '1', NA),
-         date_class = ifelse(date == date_2, '2', date_class),
-         date_class = ifelse(date == date_3, '3', date_class)) %>% 
-  select(-name, -country_region_code, -country_region, -sub_region_2) %>% 
-  pivot_wider(names_from = date_class, 
-              values_from = all_of(c("date", "retail_and_recreation_percent_change_from_baseline", "grocery_and_pharmacy_percent_change_from_baseline", 
-                                     "parks_percent_change_from_baseline", "transit_stations_percent_change_from_baseline",
-                                     "workplaces_percent_change_from_baseline", "residential_percent_change_from_baseline" 
-              ))) %>% 
-  select(-contains('_NA', ignore.case = FALSE))
+
 
 uk_mobility_data_sp = uk_mobility_data_subnational_dates %>% 
   sp::merge(eng_sco_wal_ni, ., by.x = 'name', by.y = 'merge_name')

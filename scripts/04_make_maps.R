@@ -1,4 +1,8 @@
 #Make the plots
+source('scripts/01_download_from_google.R')
+source('scripts/02_prepare_geojson_maps.R')
+source('scripts/03_prepare_data.R')
+
 #themes
 ggplot_map = function(...) ggplot2::ggplot(...) +
   theme(axis.line=element_blank(),
@@ -30,9 +34,10 @@ var_2 = paste0(chunk_var, '_2')
 var_3 = paste0(chunk_var, '_3')
 
 test = chunk_data_sp@data
+colnames(test)
 
 chunk_data_sp@data = chunk_data_sp@data %>% 
-  select(name, id, second_id, details, date_3, date_2, date_1, contains(chunk_var)) %>% 
+  select(name, id, second_id, details, 'date_3', 'date_2', 'date_1', contains(chunk_var)) %>% 
   mutate(date_1_to_3 := !!as.name(var_3) - !!as.name(var_1),
          date_2_to_3 := !!as.name(var_3) - !!as.name(var_2),
          date_1_to_2 := !!as.name(var_2) - !!as.name(var_1))                            
