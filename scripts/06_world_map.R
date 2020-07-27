@@ -11,7 +11,7 @@ world_map@data = world_map@data %>%
 
 #Now merge in 
 example_data_to_merge = global_mobility_data %>% 
-  filter(is.na(sub_region_1) & date == '2020-05-24')
+  filter(is.na(sub_region_1) & date == as.Date('2020-05-24'))
 
 #plot
 world_map_fortified = fortify(world_map, region = 'iso2') %>% 
