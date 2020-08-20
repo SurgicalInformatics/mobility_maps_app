@@ -1,0 +1,12 @@
+name: Mobility_app
+title: Mobility_app
+username:
+account: dimitrios-doudesis
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2660552
+bundleId: 3526164
+url: https://code-hf.shinyapps.io/Mobility_app/
+when: 1597684161.92424
+asMultiple: FALSE
+asStatic: FALSE
